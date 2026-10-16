@@ -1,0 +1,65 @@
+name: ${COMPOSE_PROJECT_NAME:-devops-final-de004-tranthithutrang}
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_DATABASE: 'ptit_inventory_db'
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - db-net
+
+  app:
+    image: ${APP_IMAGE:-trangtrang/devops-final-de004-tranthithutrang}:${APP_TAG:-latest}
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      APP_VERSION: ${APP_VERSION:-local}
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - db-net
+      - proxy-net
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT}:8081"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - proxy-net
+
+networks:
+  proxy-net:
+  db-net:
+
+volumes:
+  mysql_data:
